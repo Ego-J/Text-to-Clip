@@ -27,19 +27,15 @@ _CHECKPOINT_PATHS = {
 
 def feature_extractor():
     # loading net
-    net = i3d.InceptionI3d(400, spatial_squeeze=True, final_endpoint='Logits')
     rgb_input = tf.placeholder(tf.float32, shape=(batch_size, _SAMPLE_VIDEO_FRAMES, _IMAGE_SIZE, _IMAGE_SIZE, 3))
-    
-    _, end_points = net(rgb_input, is_training=False, dropout_keep_prob=1.0)
+    with tf.variable_scope('RGB'):
+        net = i3d.InceptionI3d(400, spatial_squeeze=True, final_endpoint='Logits')
+        _, end_points = net(rgb_input, is_training=False, dropout_keep_prob=1.0)
+
     end_feature = end_points['avg_pool3d']
     sess = tf.Session()
 
-    rgb_variable_map = {}
-    for variable in tf.global_variables():
-        
-        rgb_variable_map['RGB/'+variable.name.replace(':0', '')] = variable
-    print(rgb_variable_map)
-    saver = tf.train.Saver(var_list=rgb_variable_map)
+    saver = tf.train.Saver(reshape=True)
 
     saver.restore(sess, _CHECKPOINT_PATHS['rgb_imagenet'])
     
@@ -74,20 +70,21 @@ def feature_extractor():
 
         for i in range(n_batch):
             input_blobs = []
+            print("feature batch:",i)
             for j in range(batch_size):
                 input_blob = []
                 for k in range(L):
                     idx = i*batch_size*L + j*L + k
                     idx = int(idx)
                     idx = idx%n_frame + 1
-                    image = Image.open(os.path.join(video_path, '%d.jpg'%idx))
+                    image = Image.open(os.path.join(video_path, '%06d.jpg'%idx))
                     image = image.resize((resize_w, resize_h))
                     image = np.array(image, dtype='float32')
-                    '''
-                    image[:, :, 0] -= 104.
-                    image[:, :, 1] -= 117.
-                    image[:, :, 2] -= 123.
-                    '''
+                    
+                    # image[:, :, 0] -= 104.
+                    # image[:, :, 1] -= 117.
+                    # image[:, :, 2] -= 123.
+                    
                     image[:, :, :] -= 127.5
                     image[:, :, :] /= 127.5
                     input_blob.append(image)
@@ -104,7 +101,8 @@ def feature_extractor():
             features.append(clip_feature)
 
         features = np.concatenate(features, axis=0)
-        features = features[:n_feat:2]   # 16 frames per feature  (since 64-frame snippet corresponds to 8 features in I3D)
+        print(features.shape)
+        features = features[:n_feat]   # 16 frames per feature  (since 64-frame snippet corresponds to 8 features in I3D)
 
         feat_path = os.path.join(OUTPUT_FEAT_DIR, video_name + '.npy')
 
@@ -123,7 +121,7 @@ if __name__ == "__main__":
                         default='D:\\Data\\Text-to-Clip\\APP\\video_feature',
                         help='Output feature path')
     parser.add_argument('-vpf', '--VIDEO_PATH_FILE', type=str,
-                        default='charades_sta_videos.txt',
+                        default='D:\\Data\\Text-to-Clip\\I3D-Feature-Extractor-master\\charades_sta_videos.txt',
                         help='input video list')
     parser.add_argument('-vd', '--VIDEO_DIR', type=str,
                         default='D:\\Data\\Text-to-Clip\\APP\\video_frame',

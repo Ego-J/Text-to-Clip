@@ -67,7 +67,7 @@ def frame_to_fts(vname,frame_path,fts_path):
     num_frames = len(os.listdir(os.path.join(frame_path, vname)))
     imgs = load_rgb_frames(frame_path,vname,1,num_frames)
     imgs = transform(imgs)
-    inputs = video_to_tensor(imgs)
+    inputs = video_to_tensor(imgs) 
 
     b,c,t,h,w = inputs.shape
     if t > 1600:
