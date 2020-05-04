@@ -18,26 +18,29 @@ import i3d
 _SAMPLE_VIDEO_FRAMES = 64
 _IMAGE_SIZE = 224
 _CHECKPOINT_PATHS = {
-    'rgb': 'data/checkpoints/rgb_scratch/model.ckpt',
-    'rgb600': 'data/checkpoints/rgb_scratch_kin600/model.ckpt',
-    'flow': 'data/checkpoints/flow_scratch/model.ckpt',
+    'rgb': 'D:\\Data\\Text-to-Clip\\I3D-Feature-Extractor-master\\data\\checkpoints\\rgb_scratch\\model.ckpt',
+    'rgb600': 'D:\\Data\\Text-to-Clip\\I3D-Feature-Extractor-master\\data\\checkpoints\\rgb_scratch600\\model.ckpt',
     'rgb_imagenet': 'D:\\Data\\Text-to-Clip\\I3D-Feature-Extractor-master\\data\\checkpoints\\rgb_imagenet\\model.ckpt',
-    'flow_imagenet': 'data/checkpoints/flow_imagenet/model.ckpt',
 }
 
 def feature_extractor():
     # loading net
     rgb_input = tf.placeholder(tf.float32, shape=(batch_size, _SAMPLE_VIDEO_FRAMES, _IMAGE_SIZE, _IMAGE_SIZE, 3))
     with tf.variable_scope('RGB'):
-        net = i3d.InceptionI3d(400, spatial_squeeze=True, final_endpoint='Logits')
+        net = i3d.InceptionI3d(600, spatial_squeeze=True, final_endpoint='Logits')
         _, end_points = net(rgb_input, is_training=False, dropout_keep_prob=1.0)
 
     end_feature = end_points['avg_pool3d']
     sess = tf.Session()
+ 
+    rgb_variable_map = {}
+    for variable in tf.global_variables():
+      if variable.name.split('/')[0] == 'RGB':
+          rgb_variable_map[variable.name.replace(':0', '')[len('RGB/inception_i3d/'):]] = variable
 
-    saver = tf.train.Saver(reshape=True)
+    saver = tf.train.Saver(var_list=rgb_variable_map,reshape=True)
 
-    saver.restore(sess, _CHECKPOINT_PATHS['rgb_imagenet'])
+    saver.restore(sess, _CHECKPOINT_PATHS['rgb600'])
     
     video_list = open(VIDEO_PATH_FILE).readlines()
     video_list = [name.strip() for name in video_list]
@@ -68,7 +71,7 @@ def feature_extractor():
         print('n_frame: %d; n_feat: %d'%(n_frame, n_feat))
         print('n_batch: %d'%n_batch)
 
-        for i in range(n_batch):
+        for i in range(8):
             input_blobs = []
             print("feature batch:",i)
             for j in range(batch_size):
@@ -81,11 +84,11 @@ def feature_extractor():
                     image = image.resize((resize_w, resize_h))
                     image = np.array(image, dtype='float32')
                     
-                    # image[:, :, 0] -= 104.
-                    # image[:, :, 1] -= 117.
-                    # image[:, :, 2] -= 123.
+                    image[:, :, 0] -= 104.
+                    image[:, :, 1] -= 117.
+                    image[:, :, 2] -= 123.
                     
-                    image[:, :, :] -= 127.5
+                    # image[:, :, :] -= 127.5
                     image[:, :, :] /= 127.5
                     input_blob.append(image)
                 

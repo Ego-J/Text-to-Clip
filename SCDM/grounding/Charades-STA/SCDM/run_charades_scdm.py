@@ -569,132 +569,134 @@ def test(model_save_dir, result_save_dir):
         analysis_iou(result,epoch,logging)
         logging.info('*************************Epoch: '+str(epoch)+' results*****************************')
 
-def locate(video_path,sentence_description):
+# 对原始的视频I3D特征进行处理
+SAMPLE_lEN = 64
+def generate_video_fts_data(video_fts):
+    video_fts_shape = np.shape(video_fts)
+    video_clip_num = video_fts_shape[0]
+    video_fts_dim = video_fts_shape[1]
+    output_video_fts = np.zeros([1,SAMPLE_lEN,video_fts_dim])+0.0
+    add = 0
+    # 每两行原I3D特征对应一个1s时长clip的特征，通过求平均值得到一个clip的单行特征（如果末尾出现单个就直接作为单行特征），不足64则用0补全，超过64则截断
+    for i in range(video_clip_num):
+        if i % 2 == 0 and i+1 <= video_clip_num-1:
+            output_video_fts[0,add,:] = np.mean(video_fts[i:i+2,:],0)
+            add+=1
+        elif i%2 == 0 and i+1 > video_clip_num-1:
+            output_video_fts[0,add,:] = video_fts[i,:]
+            add+=1
+        if add == SAMPLE_lEN:
+            return output_video_fts
+    # print(add)
+    return output_video_fts
+
+
+def locate(video_fts_path,sentence_description,video_duration):
     
-    ### 模型和参数初始  
+    ### 模型和参数初始化  
     all_anchor_list = generate_all_anchor()
     wordtoix = np.load(options['wordtoix_path'],encoding='latin1',allow_pickle=True).tolist()
-    ixtoword = np.load(options['ixtoword_path'],encoding='latin1',allow_pickle=True).tolist()
     word_emb_init = np.array(np.load(options['word_fts_path'],encoding='latin1',allow_pickle=True).tolist(),np.float32)
-    test_data = get_video_data_HL(options['video_data_path_test'])
-    model = SSAD_SCDM(options,word_emb_init)
-    inputs,t_predict_overlap,t_predict_reg = model.build_proposal_inference()
+
+    model_graph = tf.Graph()
+    with model_graph.as_default():
+        options['batch_size'] = 1
+        model = SSAD_SCDM(options,word_emb_init)
+        inputs,t_predict_overlap,t_predict_reg = model.build_proposal_inference()
     t_feature_segment = inputs['feature_segment']
     t_sentence_index_placeholder = inputs['sentence_index_placeholder']
     t_sentence_w_len = inputs['sentence_w_len']
+
+    
     config = tf.ConfigProto(allow_soft_placement=True)
     # config.gpu_options.per_process_gpu_memory_fraction = 0.3
-    sess = tf.InteractiveSession(config=config)
-    with tf.device("/cpu:0"):
+    sess = tf.InteractiveSession(config=config,graph=model_graph)
+    with model_graph.as_default():
         saver = tf.train.Saver(max_to_keep=200)
         saver.restore(sess, 'D:\\Data\\Text-to-Clip\\SCDM\\grounding\\Charades-STA\\model\\model-96')
 
-
-
-    video_batch_id = 0
-    video_sentence_id = 4
-    current_batch = h5py.File(test_data[video_batch_id],'r')
-    result = []
-    # processing sentence
-    current_captions_tmp = current_batch['sentence']
-    current_captions = []
-    for ind in range(options['batch_size']):
-        current_captions.append(current_captions_tmp[ind].decode())
-    current_captions = np.array(current_captions)
-    for ind in range(options['batch_size']):
-        for c in string.punctuation: 
-            current_captions[ind] = current_captions[ind].replace(c,'')
-    for i in range(options['batch_size']):
-        current_captions[i] = current_captions[i].strip()
-        if current_captions[i] == '':
-            current_captions[i] = '.'
+    ### 处理输入
+    video_fts = np.load(video_fts_path).squeeze()
+    current_video_feats = generate_video_fts_data(video_fts)
+    current_video_feats = np.array([current_video_feats])
+    current_captions = np.array([sentence_description])
+    for c in string.punctuation: 
+        current_captions[0] = current_captions[0].replace(c,'')
+    current_captions[0] = current_captions[0].strip()
+    if current_captions[0] == '':
+        current_captions[0] = '.'
     current_caption_ind = list(map(lambda cap: [wordtoix[word] for word in cap.lower().split(' ') if word in wordtoix], current_captions))
     current_caption_matrix = sequence.pad_sequences(current_caption_ind, padding='post', maxlen=options['max_sen_len']-1)
     current_caption_matrix = np.hstack( [current_caption_matrix, np.zeros( [len(current_caption_matrix),1]) ] ).astype(int)
     current_caption_length = np.array(list(map(lambda x: (x != 0).sum(), current_caption_matrix ))) # save the sentence length of this batch
 
-    # processing video
-    current_video_feats =  np.array(current_batch['video_source_fts'])
-    current_anchor_input = np.array(current_batch['anchor_input'])
-    current_ground_interval = np.array(current_batch['ground_interval'])
-    current_video_name = current_batch['video_name']
-    current_video_duration = np.array(current_batch['video_duration'])
-
-    predict_overlap, predict_reg= sess.run(
-            [t_predict_overlap, t_predict_reg],
-            feed_dict={
-                t_feature_segment: current_video_feats,
-                t_sentence_index_placeholder: current_caption_matrix,
-                t_sentence_w_len: current_caption_length
-                })
+    with model_graph.as_default():
+        predict_overlap, predict_reg= sess.run(
+                [t_predict_overlap, t_predict_reg],
+                feed_dict={
+                    t_feature_segment: current_video_feats,
+                    t_sentence_index_placeholder: current_caption_matrix,
+                    t_sentence_w_len: current_caption_length
+                    })
 
     # 对预测结果进行处理
-    for batch_id in range(options['batch_size']):
-        predict_overlap_list = []
-        predict_center_list = []
-        predict_width_list = []
-        expand_anchor_list = []
-        for anchor_group_id in range(len(options['feature_map_len'])):
-            for anchor_id in range(options['feature_map_len'][anchor_group_id]):
-                for kk in range(4):
-                    # 构造四个index相同的list进行顺序遍历
-                    predict_overlap_list.append(predict_overlap[anchor_group_id][batch_id,0,anchor_id,kk])
-                    predict_center_list.append(predict_reg[anchor_group_id][batch_id,0,anchor_id,kk*2])
-                    predict_width_list.append(predict_reg[anchor_group_id][batch_id,0,anchor_id,kk*2+1])
-                    expand_anchor_list.append(all_anchor_list[anchor_group_id][anchor_id][kk])
+    result = []
+    predict_overlap_list = []
+    predict_center_list = []
+    predict_width_list = []
+    expand_anchor_list = []
+    for anchor_group_id in range(len(options['feature_map_len'])):
+        for anchor_id in range(options['feature_map_len'][anchor_group_id]):
+            for kk in range(4):
+                # 构造四个index相同的list进行顺序遍历
+                predict_overlap_list.append(predict_overlap[anchor_group_id][0,0,anchor_id,kk])
+                predict_center_list.append(predict_reg[anchor_group_id][0,0,anchor_id,kk*2])
+                predict_width_list.append(predict_reg[anchor_group_id][0,0,anchor_id,kk*2+1])
+                expand_anchor_list.append(all_anchor_list[anchor_group_id][anchor_id][kk])
+    a_left = []
+    a_right = []
+    a_score = []
+    for index in range(len(predict_overlap_list)):
+        
+        # 根据anchor和reg系数求出predict的左右边界
+        anchor = expand_anchor_list[index]
+        anchor_center = (anchor[1] - anchor[0]) * 0.5 + anchor[0]
+        anchor_width = anchor[1] - anchor[0]
+        center_offset = predict_center_list[index]
+        width_offset = predict_width_list[index]
+        p_center = anchor_center+0.1*anchor_width*center_offset
+        p_width =anchor_width*np.exp(0.1*width_offset)
+        p_left = max(0, p_center-p_width*0.5)
+        p_right = min(options['sample_len'], p_center+p_width*0.5)
 
-        a_left = []
-        a_right = []
-        a_score = []
-        for index in range(len(predict_overlap_list)):
-            
-            # 根据anchor和reg系数求出predict的左右边界
-            anchor = expand_anchor_list[index]
-            anchor_center = (anchor[1] - anchor[0]) * 0.5 + anchor[0]
-            anchor_width = anchor[1] - anchor[0]
-            center_offset = predict_center_list[index]
-            width_offset = predict_width_list[index]
-            p_center = anchor_center+0.1*anchor_width*center_offset
-            p_width =anchor_width*np.exp(0.1*width_offset)
-            p_left = max(0, p_center-p_width*0.5)
-            p_right = min(options['sample_len'], p_center+p_width*0.5)
+        # 错误情况处理
+        if p_right - p_left < 1.0:
+            continue
+        if p_right - p_left > video_duration:
+            continue
 
-            # 错误情况处理
-            if p_right - p_left < 1.0:
-                continue
-            if p_right - p_left > current_batch['video_duration'][batch_id]:
-                continue
-
-            
-            a_left.append(p_left)
-            a_right.append(p_right)
-            a_score.append(predict_overlap_list[index])
+        
+        a_left.append(p_left)
+        a_right.append(p_right)
+        a_score.append(predict_overlap_list[index])
         # 非极大抑制，进行排序
-        picks = nms_temporal(a_left,a_right,a_score,0.7)
-        process_segment = []
-        process_score = []
-        for pick in picks:
-            process_segment.append([a_left[pick],a_right[pick]])
-            process_score.append(a_score[pick])
+    picks = nms_temporal(a_left,a_right,a_score,0.7)
+    process_segment = []
+    process_score = []
+    for pick in picks:
+        process_segment.append([a_left[pick],a_right[pick]])
+        process_score.append(a_score[pick])
 
-        result.append([current_batch['video_name'][batch_id],\
-                        current_batch['ground_interval'][batch_id],\
-                        current_batch['sentence'][batch_id],\
-                        process_segment,\
-                        current_batch['video_duration'][batch_id],\
-                        process_score,\
-                        predict_overlap_list,\
-                        predict_center_list,\
-                        predict_width_list]
-                        )
-
-    case = result[video_sentence_id]
-    # print("video name:",case[0])
-    # print("sentence:",case[2])
-    # print("ground boudary:",case[1])
-    # print("predict boundary top 10:",case[3][:10])
-    # print("predict boundary top 10 score:",case[5][:10])
-    return case[3][2]
+    result.append([process_segment,\
+                    process_score,\
+                    predict_overlap_list,\
+                    predict_center_list,\
+                    predict_width_list]
+                    )
+    result = result[0]
+    print(result[0][:10])
+    print(result[1][:10])
+    return result[0][:10],result[1][:10]
 
 if __name__ == '__main__':
 
@@ -708,4 +710,4 @@ if __name__ == '__main__':
         with tf.device('/cpu:0'):
             test(model_save_dir, result_save_dir)
     if args.task == 'locate':
-        locate("xxx","xxx")
+        locate("D:\\Data\\Text-to-Clip\\APP\\video_feature\\00MFE-a.npy","person take a broom",20.6875)

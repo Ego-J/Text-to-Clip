@@ -103,7 +103,7 @@ class SSAD_SCDM(object):
             for i in range(video_fts_shape[2]): 
                 if i > 0: tf.get_variable_scope().reuse_variables()
                 # 对unit进行切片得到其feature map
-                video_fts_slice = tf.reshape(tf.slice(video_fts,begin=[0,0,i,0],size=[-1,-1,1,-1]),[options['batch_size'],-1]) # (b,512)
+                video_fts_slice = tf.reshape(tf.slice(video_fts,begin=[0,0,i,0],size=[-1,-1,1,-1]),[self.options['batch_size'],-1]) # (b,512)
                 # 将word feature和unit video feature作为输入计算出ρ
                 inputs = [word_squence, video_fts_slice]
                 attention_weights = attention(inputs, self.options['dim_hidden'], weights, scope = "attention_multimodal", memory_len = word_len, reuse = reuse)
@@ -123,9 +123,9 @@ class SSAD_SCDM(object):
         Mulitimodal Fusion阶段，将video feature和sentence feature进行fusion，得到TCN的输入
         """
         with tf.variable_scope('fuse_multimodal_feature',reuse=reuse) as scope:
-            # video_fts: (b,1,16,1024)
+            # video_fts: (b,1,64,1024)
             # sentence_fts: (b,512)
-            sq_video_fts = tf.squeeze(video_fts) # (b,64,1024)
+            sq_video_fts = tf.squeeze(video_fts,axis=1) # (b,64,1024)
             video_fts_dim = np.shape(sq_video_fts)
             # 将sentence特征复制unit number次，保证fusion的维度
             ep_sentence_fts = tf.tile(tf.expand_dims(sentence_fts,1),[1,video_fts_dim[1],1]) # (b,64,512)
@@ -210,6 +210,7 @@ class SSAD_SCDM(object):
         inputs['sentence_w_len'] = sentence_w_len
 
         predict_overlap,predict_reg = self.network(feature_segment, sentence_fts,  word_sequence, sentence_w_len, batch_size = self.options['batch_size'], is_training=is_training, reuse=reuse)
+        # 缩放到(0,1)
         predict_overlap = [tf.nn.sigmoid(i) for i in predict_overlap]
         return inputs,predict_overlap,predict_reg
 
@@ -247,65 +248,69 @@ class SSAD_SCDM(object):
         smooth_center_loss_list = []
         smooth_width_loss_list = []
 
-        
+        # 分layer计算
         for i in range(len(self.options['feature_map_len'])):
             #positive loss
+
+            # 计算L_over_positive
             single_gt_overlap = gt_output[:,i:i+1,:self.options['feature_map_len'][i],:len(self.options['scale_ratios_anchor%d'%(i+1)])*3:3]
-            print(single_gt_overlap)
             single_gt_overlap_temp = tf.identity(single_gt_overlap)
             ones_now = np.ones([self.options['batch_size'],1,self.options['feature_map_len'][i],len(self.options['scale_ratios_anchor%d'%(i+1)])],np.float32)
             zeros_now=  np.zeros([self.options['batch_size'],1,self.options['feature_map_len'][i],len(self.options['scale_ratios_anchor%d'%(i+1)])],np.float32)
-            single_gt_overlap_positive = tf.where(single_gt_overlap_temp>self.options['pos_threshold'],ones_now,zeros_now)
+            single_gt_overlap_positive = tf.where(single_gt_overlap_temp>self.options['pos_threshold'],ones_now,zeros_now)# anchor和gt的tIoU大于阈值为positive
             positive_num = tf.reduce_sum(single_gt_overlap_positive)
             positive_loss = tf.reduce_sum(tf.multiply(tf.nn.sigmoid_cross_entropy_with_logits(logits=predict_overlap[i],labels=single_gt_overlap_temp),single_gt_overlap_positive))
             positive_loss = tf.cond(tf.greater(positive_num,tf.constant(0.0)), lambda: positive_loss/positive_num, lambda: positive_loss)
 
-            #regssion loss
+            # 计算L_over_negative
+            single_gt_overlap_negative = tf.where(single_gt_overlap_temp<self.options['neg_threshold'],ones_now,zeros_now)
+            single_predict_temp = tf.identity(predict_overlap[i])
+            single_predict_temp = tf.where(single_predict_temp>self.options['hard_neg_threshold'],ones_now,zeros_now)
+            ## hard negative loss
+            hard_negative_temp = single_predict_temp*single_gt_overlap_negative
+            hard_negative_num = tf.reduce_sum(hard_negative_temp)
+            hard_negative_loss = tf.reduce_sum(tf.multiply(tf.nn.sigmoid_cross_entropy_with_logits(logits=predict_overlap[i],labels=single_gt_overlap_temp),hard_negative_temp))
+            hard_negative_loss = tf.cond(tf.greater(hard_negative_num,tf.constant(0.0)), lambda: hard_negative_loss/hard_negative_num, lambda: hard_negative_loss)
+            ## easy negative loss
+            easy_negative_temp = single_gt_overlap_negative - hard_negative_temp
+            easy_negative_num = tf.reduce_sum(easy_negative_temp)
+            easy_negative_loss = tf.reduce_sum(tf.multiply(tf.nn.sigmoid_cross_entropy_with_logits(logits=predict_overlap[i],labels=single_gt_overlap_temp),easy_negative_temp))
+            easy_negative_loss = tf.cond(tf.greater(easy_negative_num,tf.constant(0.0)), lambda: easy_negative_loss/easy_negative_num, lambda: easy_negative_loss)
+
+            # 计算L_loc
             predict_reg_center = predict_reg[i][:,:,:,::2]
             predict_reg_width = predict_reg[i][:,:,:,1::2]
+            ## 求anchor的center和width
             set_reg_center = np.zeros([self.options['batch_size'],1,self.options['feature_map_len'][i],len(self.options['scale_ratios_anchor%d'%(i+1)])])
             for j in range(self.options['feature_map_len'][i]):
                 set_reg_center[:,:,j,:]=self.options['sample_len']/self.options['feature_map_len'][i]*(j+0.5)
             set_reg_width = np.zeros([self.options['batch_size'],1,self.options['feature_map_len'][i],len(self.options['scale_ratios_anchor%d'%(i+1)])])
             for j in range(len(self.options['scale_ratios_anchor%d'%(i+1)])):
                 set_reg_width[:,:,:,j] = self.options['sample_len']*self.options['scale_ratios_anchor%d'%(i+1)][j]/self.options['feature_map_len'][i]
+            ## 用anchor的c和w与预测出来的reg_c和reg_w,求出预测片段
             predict_reg_center = set_reg_center+0.1*set_reg_width*predict_reg_center
             predict_reg_width = set_reg_width*tf.exp(0.1*predict_reg_width)
             gt_center = gt_output[:,i:i+1,:self.options['feature_map_len'][i],1:len(self.options['scale_ratios_anchor%d'%(i+1)])*3:3]
             gt_width = gt_output[:,i:i+1,:self.options['feature_map_len'][i],2:len(self.options['scale_ratios_anchor%d'%(i+1)])*3:3]
 
+            ## smooth center loss
             center_min = tf.subtract(predict_reg_center,gt_center)
             center_smooth_sign = tf.cast(tf.less(tf.abs(center_min),1),tf.float32)
-
             center_smooth_options1 = tf.multiply(center_min,center_min)*0.5
             center_smooth_options2 = tf.subtract(tf.abs(center_min),0.5)
             smooth_center_result = tf.reduce_sum(tf.add(tf.multiply(center_smooth_options1, center_smooth_sign)*single_gt_overlap_positive,
                                   tf.multiply(center_smooth_options2, tf.abs(tf.subtract(center_smooth_sign, 1.0)*single_gt_overlap_positive))))
             smooth_center_result = tf.cond(tf.greater(positive_num,tf.constant(0.0)), lambda: smooth_center_result/positive_num, lambda: smooth_center_result)
 
-
+            ## smooth width loss
             width_min = tf.subtract(predict_reg_width,gt_width)
             width_smooth_sign = tf.cast(tf.less(tf.abs(width_min),1),tf.float32)
-
             width_smooth_options1 = tf.multiply(width_min,width_min)*0.5
             width_smooth_options2 = tf.subtract(tf.abs(width_min),0.5)
             smooth_width_result = tf.reduce_sum(tf.add(tf.multiply(width_smooth_options1, width_smooth_sign)*single_gt_overlap_positive,
                                   tf.multiply(width_smooth_options2, tf.abs(tf.subtract(width_smooth_sign, 1.0)*single_gt_overlap_positive))))
             smooth_width_result = tf.cond(tf.greater(positive_num,tf.constant(0.0)), lambda: smooth_width_result/positive_num, lambda: smooth_width_result)
 
-            #negative loss
-            single_gt_overlap_negative = tf.where(single_gt_overlap_temp<self.options['neg_threshold'],ones_now,zeros_now)
-            single_predict_temp = tf.identity(predict_overlap[i])
-            single_predict_temp = tf.where(single_predict_temp>self.options['hard_neg_threshold'],ones_now,zeros_now)
-            hard_negative_temp = single_predict_temp*single_gt_overlap_negative
-            hard_negative_num = tf.reduce_sum(hard_negative_temp)
-            hard_negative_loss = tf.reduce_sum(tf.multiply(tf.nn.sigmoid_cross_entropy_with_logits(logits=predict_overlap[i],labels=single_gt_overlap_temp),hard_negative_temp))
-            hard_negative_loss = tf.cond(tf.greater(hard_negative_num,tf.constant(0.0)), lambda: hard_negative_loss/hard_negative_num, lambda: hard_negative_loss)
-
-            easy_negative_temp = single_gt_overlap_negative - hard_negative_temp
-            easy_negative_num = tf.reduce_sum(easy_negative_temp)
-            easy_negative_loss = tf.reduce_sum(tf.multiply(tf.nn.sigmoid_cross_entropy_with_logits(logits=predict_overlap[i],labels=single_gt_overlap_temp),easy_negative_temp))
-            easy_negative_loss = tf.cond(tf.greater(easy_negative_num,tf.constant(0.0)), lambda: easy_negative_loss/easy_negative_num, lambda: easy_negative_loss)
 
             anchor_predict_loss.append((self.options['posloss_weight']*positive_loss+\
                                         self.options['hardnegloss_weight']*hard_negative_loss+\
@@ -318,7 +323,8 @@ class SSAD_SCDM(object):
             smooth_center_loss_list.append(self.options['reg_weight_center']*smooth_center_result)
             smooth_width_loss_list.append(self.options['reg_weight_width']*smooth_width_result)
 
-
+        
+        # 每一层anchor的权重
         weight_anchor = self.options['weight_anchor']
         for i in range(len(anchor_predict_loss)):
             anchor_predict_loss[i]= anchor_predict_loss[i]*weight_anchor[i]
@@ -329,7 +335,7 @@ class SSAD_SCDM(object):
         smooth_center_loss_all = sum(smooth_center_loss_list)
         smooth_width_loss_all = sum(smooth_width_loss_list)
 
-        # outputs from proposal module
+        # 所有candiate segement的损失和
         outputs['loss_ssad'] = loss_ssad
         outputs['positive_loss_all'] = positive_loss_all
         outputs['hard_negative_loss_all'] = hard_negative_loss_all
@@ -340,7 +346,7 @@ class SSAD_SCDM(object):
         outputs['predict_reg'] = predict_reg
 
 
-        # L2 regularization
+        # 总损失增加了L2正则项
         reg_loss =  tf.add_n([tf.nn.l2_loss(v) for v in tf.trainable_variables()])
         outputs['reg_loss'] = self.options['reg'] * reg_loss
         outputs['loss_all'] = outputs['loss_ssad'] + outputs['reg_loss']

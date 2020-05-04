@@ -64,7 +64,7 @@ def generate_anchor(feat_len,feat_ratio,max_len,output_path): #以feature map长
 def generate_all_anchor():
     all_anchor_list = []
     for i in range(len(options['feature_map_len'])):
-        anchor_list = generate_anchor(options['feature_map_len'][i],options['scale_ratios_anchor'+str(i+1)],SAMPLE_lEN,str(i+1)+'.txt')
+        anchor_list = generate_anchor(options['feature_map_len'][ ,options['scale_ratios_anchor'+str(i+1)],SAMPLE_lEN,str(i+1)+'.txt')
         all_anchor_list.append(anchor_list)
     return all_anchor_list
 

@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import os, h5py, sys, argparse
 import os
+from PIL import Image
 # from tensorflow.python import pywrap_tensorflow
 
 
@@ -22,7 +23,7 @@ import os
 
 vname = '00HFP'
 
-fts = np.load("D:\\Data\\Text-to-Clip\\APP\\video_feature\\"+vname+".npy").squeeze()
+fts = np.load("D:\\Data\\Text-to-Clip\\APP\\video_feature\\"+vname+".npy")
 print(fts.shape)
 print(fts)
 
@@ -30,3 +31,5 @@ data = h5py.File('D:\\Data\\Text-to-Clip\\SCDM\\data\\Charades\\charades_i3d_rgb
 fts2 = np.array(data[vname]['i3d_rgb_features'])
 print(fts2.shape)
 print(fts2)
+
+

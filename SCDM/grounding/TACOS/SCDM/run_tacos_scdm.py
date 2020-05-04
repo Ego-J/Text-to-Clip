@@ -457,7 +457,6 @@ def test(model_save_dir, result_save_dir):
         result = []
         for current_batch_file_idx in range(len(test_data)):
 
-            print(current_batch_file_idx)
             
             current_batch = h5py.File(test_data[current_batch_file_idx],'r')
             # processing sentence
