@@ -1,4 +1,4 @@
-/EALL
+
 /files
 /demo
 /SCDM/data
@@ -6,6 +6,15 @@
 /SCDM/grounding/*/model/SCDM/logs
 /SCDM/grounding/*/result
 !/SCDM/grounding/*/words/*
+/APP/static/video/*
+/APP/static/video_feature/*
+/APP/static/video_frame/*
+/APP/static/clip/*
+/APP/static/images/*
+/APP/static/plugins/*
+/APP/video/*
+/APP/video_feature/*
+/APP/video_frame/*
 *.mp4
 *.npy
 *.jpg

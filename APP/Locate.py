@@ -16,9 +16,18 @@ import pygame
 sys.path.append("D:\\Data\\Text-to-Clip\\SCDM\\grounding\\Charades-STA\SCDM")
 import run_charades_scdm
 
-VIDEO_PATH = "D:\\Data\\Text-to-Clip\\APP\\video"
-FRAME_PATH = "D:\\Data\\Text-to-Clip\\APP\\video_frame"
-FTS_PATH = "D:\\Data\\Text-to-Clip\\APP\\video_feature"
+WEB_MODE = True
+
+if WEB_MODE:
+    VIDEO_PATH = "D:\\Data\\Text-to-Clip\\APP\\static\\video"
+    FRAME_PATH = "D:\\Data\\Text-to-Clip\\APP\\static\\video_frame"
+    FTS_PATH = "D:\\Data\\Text-to-Clip\\APP\\static\\video_feature"
+    CLIP_PATH = "D:\\Data\\Text-to-Clip\\APP\\static\\clip"
+else:
+    VIDEO_PATH = "D:\\Data\\Text-to-Clip\\APP\\video"
+    FRAME_PATH = "D:\\Data\\Text-to-Clip\\APP\\video_frame"
+    FTS_PATH = "D:\\Data\\Text-to-Clip\\APP\\video_feature"
+    
 FPS = 16
 CKPT_PATH = 'D:\\Data\\Text-to-Clip\\I3D-Feature-Extractor-master\\data\\checkpoints\\rgb_scratch600\\model.ckpt'
 
@@ -28,12 +37,10 @@ def video_to_frame(video_path):
     if not os.path.exists(save_path):
         os.mkdir(save_path)
     else:
-        duration = len([ff for ff in os.listdir(save_path) if ff.endswith('.jpg')])/FPS
-        return vname,duration
+        return vname
     # 使用ffmpeg对视频抽帧时，影响输出特征值的还有抽帧质量 参数为 -q:v 不过并不影响最后模型中的使用
     call(["ffmpeg", "-i", video_path,"-r","16","-q:v","5", save_path+"\\%06d.jpg"])
-    duration = len([ff for ff in os.listdir(save_path) if ff.endswith('.jpg')])/FPS
-    return vname,duration
+    return vname
 
 def frame_to_fts(vname):
 
@@ -92,19 +99,38 @@ def frame_to_fts(vname):
     print('Saving features and probs for video: %s ...'%vname)
     np.save(feat_path, features)
 
-def text_to_clip(video_path,sentence_description):
+def text_to_clip(vname,sentence_description):
     
-    vname , duration = video_to_frame(video_path)
+    video_path = os.path.join(VIDEO_PATH,vname)
+    vname = video_to_frame(video_path)
+    duration = VideoFileClip(video_path).duration
     frame_to_fts(vname)
     video_fts_path = os.path.join(FTS_PATH,vname+".npy")
     pred_clip,pred_score = run_charades_scdm.locate(video_fts_path,sentence_description,duration)
 
-    pygame.display.set_caption('predicted clip')
-    clip1 = VideoFileClip(video_path).subclip(pred_clip[0][0],pred_clip[0][1])
-    clip2 = VideoFileClip(video_path).subclip(pred_clip[1][0],pred_clip[1][1])
-    clip3 = VideoFileClip(video_path).subclip(pred_clip[2][0],pred_clip[2][1])
-    clip = clips_array([[clip1,clip2,clip3]]).resize(width=1000)
-    clip.preview(fps=16, audio=False)
-    pygame.quit()
+    if WEB_MODE:
+        clips = []
+        for i in range(3):
+            clip_dict = {}
+            clip_dict['left'] = round(pred_clip[i][0],2)
+            clip_dict['right'] = round(pred_clip[i][1],2)
+            clip_dict['name'] =  vname+"_"+sentence_description.replace(' ','_')+"_clip%d.mp4"%(i+1)
+            clip_dict['score'] = round(pred_score[i],2)
+            clip = VideoFileClip(video_path).subclip(pred_clip[i][0],pred_clip[i][1])
+            path = os.path.join(CLIP_PATH,clip_dict['name'])
+            if not os.path.exists(path):
+                clip.write_videofile(path)
+            clips.append(clip_dict)
+        return clips
+    
+    else:
+        pygame.display.set_caption('predicted clip')
+        clip1 = VideoFileClip(video_path).subclip(pred_clip[0][0],pred_clip[0][1])
+        clip2 = VideoFileClip(video_path).subclip(pred_clip[1][0],pred_clip[1][1])
+        clip3 = VideoFileClip(video_path).subclip(pred_clip[2][0],pred_clip[2][1])
+        clip = clips_array([[clip1,clip2,clip3]]).resize(width=1000)
+        clip.preview(fps=16, audio=False)
+        pygame.quit()
 
-text_to_clip("D:\\Data\\Text-to-Clip\\APP\\video\\00MFE.mp4","person is drinking")
+if  __name__ == "__main__":
+    text_to_clip("D:\\Data\\Text-to-Clip\\APP\\video\\00MFE.mp4","person take a broom")

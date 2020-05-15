@@ -21,15 +21,16 @@ from PIL import Image
 #     shape = reader.get_tensor(key).shape
 #     print(reader.get_tensor(key).shape)
 
-vname = '00HFP'
+# vname = '00HFP'
 
-fts = np.load("D:\\Data\\Text-to-Clip\\APP\\video_feature\\"+vname+".npy")
-print(fts.shape)
-print(fts)
+# fts = np.load("D:\\Data\\Text-to-Clip\\SCDM\\data\TACOS\\datasplit_info\\tacos_split.npz")
 
-data = h5py.File('D:\\Data\\Text-to-Clip\\SCDM\\data\\Charades\\charades_i3d_rgb.hdf5','r')
-fts2 = np.array(data[vname]['i3d_rgb_features'])
-print(fts2.shape)
-print(fts2)
+# print(fts['train'])
 
+data = h5py.File('D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\activitynet_c3d_fc6_stride_1s.hdf5','r')
+fts2 = np.array(data["v_QOlSCBRmfWY"]['c3d_fc6_features'])
+print([x for x in fts2[0]])
+
+# word_embedding = np.load('D:\\Data\\Text-to-Clip\\SCDM\\grounding\\Charades-STA\\words\\word_glove_fts_init.npy',encoding='latin1',allow_pickle=True)
+# print(word_embedding[105])
 

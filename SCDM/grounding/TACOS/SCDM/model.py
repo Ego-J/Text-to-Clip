@@ -290,7 +290,9 @@ class SSAD_SCDM(object):
             predict_reg_width = set_reg_width*tf.exp(0.1*predict_reg_width)
             gt_center = gt_output[:,i:i+1,:self.options['feature_map_len'][i],1:len(self.options['scale_ratios_anchor%d'%(i+1)])*3:3]
             gt_width = gt_output[:,i:i+1,:self.options['feature_map_len'][i],2:len(self.options['scale_ratios_anchor%d'%(i+1)])*3:3]
-
+            print("-------------------------")
+            print(gt_center)
+            print("-------------------------")
             center_min = tf.subtract(predict_reg_center,gt_center)
             center_smooth_sign = tf.cast(tf.less(tf.abs(center_min),1),tf.float32)
 

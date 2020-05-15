@@ -360,6 +360,9 @@ def train(logging, model_save_dir, result_save_dir):
             current_video_name = current_batch['video_name']
             current_video_feats =  generate_batch_video_fts(current_video_name)
             current_anchor_input = np.array(current_batch['anchor_input'])
+            print("-------------------------")
+            print(current_anchor_input)
+            print("-------------------------")
             current_ground_interval = np.array(current_batch['ground_interval'])
             current_video_duration = np.array(current_batch['video_duration'])
 

@@ -590,10 +590,8 @@ def generate_video_fts_data(video_fts):
     # print(add)
     return output_video_fts
 
-
-def locate(video_fts_path,sentence_description,video_duration):
-    
-    ### 模型和参数初始化  
+# build model in WEB mode
+if __name__ == 'run_charades_scdm':
     all_anchor_list = generate_all_anchor()
     wordtoix = np.load(options['wordtoix_path'],encoding='latin1',allow_pickle=True).tolist()
     word_emb_init = np.array(np.load(options['word_fts_path'],encoding='latin1',allow_pickle=True).tolist(),np.float32)
@@ -614,7 +612,9 @@ def locate(video_fts_path,sentence_description,video_duration):
     with model_graph.as_default():
         saver = tf.train.Saver(max_to_keep=200)
         saver.restore(sess, 'D:\\Data\\Text-to-Clip\\SCDM\\grounding\\Charades-STA\\model\\model-96')
-
+            
+def locate(video_fts_path,sentence_description,video_duration):
+    
     ### 处理输入
     video_fts = np.load(video_fts_path).squeeze()
     current_video_feats = generate_video_fts_data(video_fts)
@@ -674,6 +674,8 @@ def locate(video_fts_path,sentence_description,video_duration):
             continue
         if p_right - p_left > video_duration:
             continue
+        if p_right > video_duration:
+            p_right = video_duration
 
         
         a_left.append(p_left)
@@ -699,7 +701,6 @@ def locate(video_fts_path,sentence_description,video_duration):
     return result[0][:10],result[1][:10]
 
 if __name__ == '__main__':
-
 
     args = parse_args()
     logging, model_save_dir, result_save_dir = make_prepare_path(args.task)
