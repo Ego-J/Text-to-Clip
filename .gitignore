@@ -15,9 +15,13 @@
 /APP/video/*
 /APP/video_feature/*
 /APP/video_frame/*
+/ANET
+/jkc
+*.rar
 *.mp4
 *.npy
 *.jpg
+*.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

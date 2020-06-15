@@ -131,7 +131,21 @@
 
 <section class="popular-deals section bg-gray">
 	<div class="container">
-		<div id="clips"></div>
+		<div id="result">
+			<div id="clips"></div>
+		</div>
+		<div id="loading" style="display: none;">
+			<div class="row">
+				<div class="col-md-12">
+					<div class="section-title" >
+						<img src="/static/images/loading.gif" alt=""/>
+						<div style="width: auto; height: auto; text-align: center;">
+							<p>定位中</p>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
 	</div>
 </section>
 
@@ -147,20 +161,10 @@
       <div class="col-sm-6 col-12">
         <!-- Copyright -->
         <div class="copyright">
-          <p>Copyright © <script>
-              var CurrentYear = new Date().getFullYear()
-              document.write(CurrentYear)
-            </script>. All Rights Reserved, theme by <a class="text-primary" href="https://themefisher.com" target="_blank">themefisher.com</a></p>
         </div>
       </div>
       <div class="col-sm-6 col-12">
         <!-- Social Icons -->
-        <ul class="social-media-icons text-right">
-          <li><a class="fa fa-facebook" href="https://www.facebook.com/themefisher" target="_blank"></a></li>
-          <li><a class="fa fa-twitter" href="https://www.twitter.com/themefisher" target="_blank"></a></li>
-          <li><a class="fa fa-pinterest-p" href="https://www.pinterest.com/themefisher" target="_blank"></a></li>
-          <li><a class="fa fa-vimeo" href=""></a></li>
-        </ul>
       </div>
     </div>
   </div>
@@ -173,8 +177,17 @@
 
 <!-- JAVASCRIPTS -->
 <script type="text/javascript">
+
     function GETClipsData(url) {
         $.ajax({
+			async:true,
+			beforeSend: function () {
+				$("#result").hide();
+    			$("#loading").show();
+			},
+			complete: function () {
+				$("#loading").hide();
+			},
             type: "GET",
             url: url,
 			data:{
@@ -183,7 +196,8 @@
 			},
             dataType: "html",   // 期待后端返回数据的类型
             success: function (data) {//返回数据根据结果进行相应的处理
-                $("#clips").html(data);
+                $("#result").show();
+				$("#clips").html(data);
             },
             error: function () {
                 $("#clips").html("获取数据失败！");

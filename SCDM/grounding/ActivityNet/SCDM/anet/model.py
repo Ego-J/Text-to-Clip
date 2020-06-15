@@ -3,11 +3,11 @@ Build graph for both training and inference
 """
 
 import tensorflow as tf
-from utils import *
 slim = tf.contrib.slim
 import numpy as np
-from GRU import gated_attention_Wrapper, GRUCell, SRUCell
-from opt import *
+from anet.GRU import gated_attention_Wrapper, GRUCell, SRUCell
+from anet.utils import *
+from anet.opt import *
 
 
 class SSAD_SCDM(object):
@@ -116,7 +116,7 @@ class SSAD_SCDM(object):
             with tf.device("/cpu:0"):
                 Wemb = tf.Variable(initial_value = self.word_emb_init, name='Wemb')
                 sentence_emb = []
-                for i in xrange(self.options['max_sen_len']):
+                for i in range(self.options['max_sen_len']):
                     sentence_emb.append(tf.nn.embedding_lookup(Wemb, sentence_index[:,i]))
                 sentence_emb = tf.stack(sentence_emb)
                 sentence = tf.transpose(sentence_emb,[1,0,2])
@@ -140,7 +140,7 @@ class SSAD_SCDM(object):
             output_attended_sentence_list = []
             for i in range(video_fts_shape[2]):
                 if i > 0: tf.get_variable_scope().reuse_variables()
-                video_fts_slice = tf.reshape(tf.slice(video_fts,begin=[0,0,i,0],size=[-1,-1,1,-1]),[options['batch_size'],-1])
+                video_fts_slice = tf.reshape(tf.slice(video_fts,begin=[0,0,i,0],size=[-1,-1,1,-1]),[self.options['batch_size'],-1])
                 inputs = [word_squence, video_fts_slice]
                 attention_weights = attention(inputs, self.options['dim_hidden'], weights, scope = "attention_multimodal", memory_len = word_len, reuse = reuse)
                 extended_attention_weights = tf.expand_dims(attention_weights, -1)
@@ -155,7 +155,7 @@ class SSAD_SCDM(object):
         with tf.variable_scope('fuse_multimodal_feature',reuse=reuse) as scope:
             # video_fts: b,1,1024,556
             # sentence_fts: b,512
-            sq_video_fts = tf.squeeze(video_fts) # b,1024,556
+            sq_video_fts = tf.squeeze(video_fts,axis=1) # b,1024,556
             video_fts_dim = np.shape(sq_video_fts)
             ep_sentence_fts = tf.tile(tf.expand_dims(sentence_fts,1),[1,video_fts_dim[1],1]) # b,1024,512
             concat_fts = tf.concat([sq_video_fts,ep_sentence_fts],-1) # b,1024,1068
@@ -278,8 +278,6 @@ class SSAD_SCDM(object):
         smooth_width_loss_list = []
         
         for i in range(len(self.options['feature_map_len'])):
-
-            print self.anchor_mask_list[i]
 
 #positive loss
             single_gt_overlap = gt_output[:,i:i+1,:self.options['feature_map_len'][i],:len(self.options['scale_ratios_anchor%d'%(i+1)])*3:3]

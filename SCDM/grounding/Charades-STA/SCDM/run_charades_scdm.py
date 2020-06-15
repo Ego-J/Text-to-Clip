@@ -596,22 +596,22 @@ if __name__ == 'run_charades_scdm':
     wordtoix = np.load(options['wordtoix_path'],encoding='latin1',allow_pickle=True).tolist()
     word_emb_init = np.array(np.load(options['word_fts_path'],encoding='latin1',allow_pickle=True).tolist(),np.float32)
 
-    model_graph = tf.Graph()
-    with model_graph.as_default():
-        options['batch_size'] = 1
-        model = SSAD_SCDM(options,word_emb_init)
-        inputs,t_predict_overlap,t_predict_reg = model.build_proposal_inference()
+    model_graph_charades = tf.Graph()
+    config = tf.ConfigProto(allow_soft_placement=True)
+    sess_charades = tf.InteractiveSession(config=config,graph=model_graph_charades)
+    with sess_charades.as_default():
+        with model_graph_charades.as_default():
+            options['batch_size'] = 1
+            model = SSAD_SCDM(options,word_emb_init)
+            inputs,t_predict_overlap,t_predict_reg = model.build_proposal_inference()
     t_feature_segment = inputs['feature_segment']
     t_sentence_index_placeholder = inputs['sentence_index_placeholder']
     t_sentence_w_len = inputs['sentence_w_len']
 
-    
-    config = tf.ConfigProto(allow_soft_placement=True)
-    # config.gpu_options.per_process_gpu_memory_fraction = 0.3
-    sess = tf.InteractiveSession(config=config,graph=model_graph)
-    with model_graph.as_default():
-        saver = tf.train.Saver(max_to_keep=200)
-        saver.restore(sess, 'D:\\Data\\Text-to-Clip\\SCDM\\grounding\\Charades-STA\\model\\model-96')
+    with sess_charades.as_default():
+        with model_graph_charades.as_default():
+            saver = tf.train.Saver(max_to_keep=200)
+            saver.restore(sess_charades, 'D:\\Data\\Text-to-Clip\\SCDM\\grounding\\Charades-STA\\model\\model-96')
             
 def locate(video_fts_path,sentence_description,video_duration):
     
@@ -630,14 +630,15 @@ def locate(video_fts_path,sentence_description,video_duration):
     current_caption_matrix = np.hstack( [current_caption_matrix, np.zeros( [len(current_caption_matrix),1]) ] ).astype(int)
     current_caption_length = np.array(list(map(lambda x: (x != 0).sum(), current_caption_matrix ))) # save the sentence length of this batch
 
-    with model_graph.as_default():
-        predict_overlap, predict_reg= sess.run(
-                [t_predict_overlap, t_predict_reg],
-                feed_dict={
-                    t_feature_segment: current_video_feats,
-                    t_sentence_index_placeholder: current_caption_matrix,
-                    t_sentence_w_len: current_caption_length
-                    })
+    with sess_charades.as_default():
+        with model_graph_charades.as_default():
+            predict_overlap, predict_reg= sess_charades.run(
+                    [t_predict_overlap, t_predict_reg],
+                    feed_dict={
+                        t_feature_segment: current_video_feats,
+                        t_sentence_index_placeholder: current_caption_matrix,
+                        t_sentence_w_len: current_caption_length
+                        })
 
     # 对预测结果进行处理
     result = []

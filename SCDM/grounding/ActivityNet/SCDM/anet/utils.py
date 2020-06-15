@@ -1,9 +1,8 @@
 import tensorflow as tf
 import math
 from tensorflow.contrib.layers.python.layers import batch_norm as batch_norm
-from utils import *
 import numpy as np
-from opt import *
+from anet.opt import *
 
 options = default_options()
 

@@ -8,28 +8,39 @@ import numpy as np
 from subprocess import call
 from moviepy.editor  import VideoFileClip,clips_array
 import tensorflow as tf
+import torchvision
+import torch.optim as optim
+import torch
+from torch.autograd import Variable
+import torch.nn.functional as F
+import skimage.io as io
+from skimage.transform import resize
 import i3d
+import c3d
 from PIL import Image
 import math
 import sys
 import pygame
-sys.path.append("D:\\Data\\Text-to-Clip\\SCDM\\grounding\\Charades-STA\SCDM")
-import run_charades_scdm
+sys.path.append("D:\\Data\\Text-to-Clip\\SCDM\\grounding\\Charades-STA\\SCDM")
+from run_charades_scdm import locate as SCDM_Locate
+sys.path.append("D:\\Data\\Text-to-Clip\\SCDM\\grounding\\ActivityNet\\SCDM")
+from run_anet_scdm import locate as ExCL_Locate
 
 WEB_MODE = True
-
+IS_LONG = True
+LONG_THRESHOLD = 64
 if WEB_MODE:
     VIDEO_PATH = "D:\\Data\\Text-to-Clip\\APP\\static\\video"
     FRAME_PATH = "D:\\Data\\Text-to-Clip\\APP\\static\\video_frame"
     FTS_PATH = "D:\\Data\\Text-to-Clip\\APP\\static\\video_feature"
     CLIP_PATH = "D:\\Data\\Text-to-Clip\\APP\\static\\clip"
 else:
-    VIDEO_PATH = "D:\\Data\\Text-to-Clip\\APP\\video"
-    FRAME_PATH = "D:\\Data\\Text-to-Clip\\APP\\video_frame"
-    FTS_PATH = "D:\\Data\\Text-to-Clip\\APP\\video_feature"
-    
+    VIDEO_PATH = "D:\\Data\\Text-to-Clip\\APP\\static\\video"
+    FRAME_PATH = "D:\\Data\\Text-to-Clip\\APP\\static\\video_frame"
+    FTS_PATH = "D:\\Data\\Text-to-Clip\\APP\\static\\video_feature"
 FPS = 16
-CKPT_PATH = 'D:\\Data\\Text-to-Clip\\I3D-Feature-Extractor-master\\data\\checkpoints\\rgb_scratch600\\model.ckpt'
+I3D_CKPT_PATH = 'D:\\Data\\Text-to-Clip\\I3D-Feature-Extractor-master\\data\\checkpoints\\rgb_scratch600\\model.ckpt'
+C3D_CKPT_PATH = 'D:\\Data\\Text-to-Clip\\files\\c3d.pickle'
 
 def video_to_frame(video_path):
     vname = (video_path.split('\\')[-1]).split('.')[0]
@@ -42,16 +53,8 @@ def video_to_frame(video_path):
     call(["ffmpeg", "-i", video_path,"-r","16","-q:v","5", save_path+"\\%06d.jpg"])
     return vname
 
-def frame_to_fts(vname):
+def short_video_extraction(vname,n_frames,frame_path,feat_path):
 
-    frame_path = os.path.join(FRAME_PATH, vname)
-    feat_path = os.path.join(FTS_PATH, vname + '.npy')
-    
-    if os.path.exists(feat_path):
-        print('Feature file for video %s already exists.'%vname)
-        return
-
-    n_frames = len([ff for ff in os.listdir(frame_path) if ff.endswith('.jpg')])
     batch_frames = 64
     # loading net
     rgb_input = tf.placeholder(tf.float32, shape=(1, batch_frames, 224, 224, 3))
@@ -67,10 +70,8 @@ def frame_to_fts(vname):
           rgb_variable_map[variable.name.replace(':0', '')[len('RGB/inception_i3d/'):]] = variable
 
     saver = tf.train.Saver(var_list=rgb_variable_map,reshape=True)
-    saver.restore(sess, CKPT_PATH)
+    saver.restore(sess, I3D_CKPT_PATH)
 
-    print('Total frames: %d'%n_frames)
-    
     features = []
     for batch_i in range(math.ceil(n_frames/batch_frames)):
         input_blob = []
@@ -96,17 +97,83 @@ def frame_to_fts(vname):
     else:
         features = features[0]
     features = features[:n_frames//8]
-    print('Saving features and probs for video: %s ...'%vname)
+    print('Saving features for video: %s ...'%vname)
     np.save(feat_path, features)
+
+def long_video_extraction(vname,n_frames,frame_path,feat_path):
+
+    crop_w = 112
+    resize_w = 128
+    crop_h = 112
+    resize_h = 171
+    nb_frames = 16
+
+    net = c3d.C3D(487)
+    net.load_state_dict(torch.load(C3D_CKPT_PATH))
+    EXTRACTED_LAYER = 6
+    feature_dim = 4096
+
+    
+    total_frames = n_frames
+    valid_frames = total_frames/nb_frames * nb_frames
+    index_w = np.random.randint(resize_w - crop_w) ## crop
+    index_h = np.random.randint(resize_h - crop_h) ## crop
+    features = []
+    for i in range(int(valid_frames/nb_frames)) :   
+        clip = np.array([resize(io.imread(os.path.join(frame_path, '%06d.jpg'%(i+1))), output_shape=(resize_w, resize_h), preserve_range=True) for j in range(i * nb_frames+1, (i+1) * nb_frames+1)])
+        clip = clip[:, index_w: index_w+ crop_w, index_h: index_h+ crop_h, :]
+        clip = torch.from_numpy(np.float32(clip.transpose(3, 0, 1, 2)))
+        clip = Variable(clip)			
+        clip = clip.resize(1, 3, nb_frames, crop_w, crop_h)
+        _, clip_output = net(clip, EXTRACTED_LAYER) 
+        clip_feature  = (clip_output.data).cpu()  
+        features.append(clip_feature)
+        print(i,clip_feature.cpu().numpy().shape)
+    features = torch.cat(features, 0)
+    features = features.numpy()
+    print('features shape',features.shape)
+    print('Saving features for video: %s ...'%vname)       
+    np.save(feat_path, features)
+
+
+def frame_to_fts(vname):
+
+    frame_path = os.path.join(FRAME_PATH, vname)
+    feat_path = os.path.join(FTS_PATH, vname + '.npy')
+    if os.path.exists(feat_path):
+        print('Feature file for video %s already exists.'%vname)
+        return
+    
+    n_frames = len([ff for ff in os.listdir(frame_path) if ff.endswith('.jpg')])
+    print('Total frames: %d'%n_frames)
+
+    if IS_LONG:
+        long_video_extraction(vname,n_frames,frame_path,feat_path)
+    else:
+        short_video_extraction(vname,n_frames,frame_path,feat_path)
 
 def text_to_clip(vname,sentence_description):
     
+
     video_path = os.path.join(VIDEO_PATH,vname)
     vname = video_to_frame(video_path)
     duration = VideoFileClip(video_path).duration
+    global LONG_THRESHOLD
+    global IS_LONG
+    if duration <= LONG_THRESHOLD:
+        print("Processing with a short video!")
+        IS_LONG = False
+    else:
+        print("Processing with a long video!")
+        IS_LONG = True
     frame_to_fts(vname)
     video_fts_path = os.path.join(FTS_PATH,vname+".npy")
-    pred_clip,pred_score = run_charades_scdm.locate(video_fts_path,sentence_description,duration)
+    
+    if IS_LONG:
+        pred_clip,pred_score = ExCL_Locate(video_fts_path,sentence_description,duration)
+    else:
+        pred_clip,pred_score = SCDM_Locate(video_fts_path,sentence_description,duration)
+
 
     if WEB_MODE:
         clips = []
@@ -133,4 +200,4 @@ def text_to_clip(vname,sentence_description):
         pygame.quit()
 
 if  __name__ == "__main__":
-    text_to_clip("D:\\Data\\Text-to-Clip\\APP\\video\\00MFE.mp4","person take a broom")
+    text_to_clip("D:\\Data\\Text-to-Clip\\APP\\static\\video\\LNKdVrX_0Fg.mp4","She wraps it around the toy, then tapes it up")

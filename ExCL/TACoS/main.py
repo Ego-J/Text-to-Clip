@@ -38,8 +38,10 @@ def train(opt,resume=False):
         model.load_state_dict(check_point['state_dict'])
 
 
-    # 损失函数，ExCL-clf 负似然对数
-    criterion = torch.nn.NLLLoss()#.cuda()
+    # # 损失函数，ExCL-clf 负似然对数
+    # criterion = torch.nn.NLLLoss()#.cuda()
+    # 损失函数，ExCL-reg 绝对误差
+    criterion = torch.nn.L1Loss()#.cuda()
 
     # 设置优化器
     optimizer = torch.optim.Adam(model.parameters(),lr=opt.lr)
@@ -68,14 +70,26 @@ def train(opt,resume=False):
             g_end = torch.autograd.Variable(torch.from_numpy(g_position[1])).long()
 
             # 计算输出和损失、准确度并保存当前batch的结果
-            p_start,p_end = model(x_video,x_text)
-            print(p_start) 
+            s_start,s_end = model(x_video,x_text)
+            
+            print(s_start) 
             print(p_start.size())
             print(g_start)
+
+            # clf loss
+            p_start = nn.functional.log_softmax(s_start,dim=1) # p_start(b,vlen)
+            p_end = nn.functional.log_softmax(s_end,dim=1) 
             loss_start = criterion(p_start, g_start)
             loss_end = criterion(p_end, g_end)
             loss = loss_start + loss_end
             losses.update(loss.item(), x_text.size()[0])
+
+            # reg loss
+            p_start = nn.functional.softmax(s_start,dim=1) # p_start(b,vlen)
+            p_end = nn.functional.softmax(s_end,dim=1) 
+            time_span = torch.from_numpy(np.array())
+            time_start = p_start
+
 
             # 梯度初始化为0
             optimizer.zero_grad()

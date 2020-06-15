@@ -65,16 +65,16 @@ def default_options():
     options['dropout'] = 0.2
     options['zoneout'] = None
 
-    options['video_fts_path'] = '../../../data/activitynet_c3d_fc6_stride_1s.hdf5'
-    options['video_data_path_train'] = '../../../data/ActivityNet/h5py/train/train.txt'
-    options['video_data_path_val'] = '../../../data/ActivityNet/h5py/val/val.txt'
-    options['wordtoix_path'] = '../words/wordtoix.npy'
-    options['ixtoword_path'] = '../words/ixtoword.npy'
-    options['word_fts_path'] = '../words/word_glove_fts_init.npy'
-    options['model_save_dir'] = '../model/'
-    options['result_save_dir'] = '../result/'
-    options['words_path'] = '../words/'
-    options['video_info_path'] = '../../../data/ActivityNet/data_info/video_info.pkl'
+    options['video_fts_path'] = 'D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\activitynet_train_c3d.hdf5'
+    options['video_data_path_train'] = 'D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\h5py\\train\\train.txt'
+    options['video_data_path_test'] = 'D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\h5py\\test\\test.txt'
+    options['wordtoix_path'] = 'D:\\Data\\Text-to-Clip\\SCDM\\grounding\\ActivityNet\\words\\wordtoix.npy'
+    options['ixtoword_path'] = 'D:\\Data\\Text-to-Clip\\SCDM\\grounding\\ActivityNet\\words\\ixtoword.npy'
+    options['word_fts_path'] = 'D:\\Data\\Text-to-Clip\\SCDM\\grounding\\ActivityNet\\words\\word_glove_fts_init.npy'
+    options['model_save_dir'] = 'D:\\Data\\Text-to-Clip\\SCDM\\grounding\\ActivityNet\\model'
+    options['result_save_dir'] = 'D:\\Data\\Text-to-Clip\\SCDM\\grounding\\ActivityNet\\result'
+    options['words_path'] = 'D:\\Data\\Text-to-Clip\\SCDM\\grounding\\ActivityNet\\words'
+    options['video_info_path'] = 'D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\data_info\\video_info.pkl'
  
     options['optimizer'] = "adam" # Options: ["adadelta", "adam", "gradientdescent", "adagrad"]
     options['clip'] = True # clip gradient norm

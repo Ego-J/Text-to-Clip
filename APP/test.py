@@ -27,9 +27,10 @@ from PIL import Image
 
 # print(fts['train'])
 
-data = h5py.File('D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\activitynet_c3d_fc6_stride_1s.hdf5','r')
-fts2 = np.array(data["v_QOlSCBRmfWY"]['c3d_fc6_features'])
-print([x for x in fts2[0]])
+data = h5py.File('D:\\Data\\Text-to-Clip\\ANET\\data\\ActivityNet\\activitynet_train_c3d.hdf5','r')
+print([x for x in data['v_LNKdVrX_0Fg']])
+# fts2 = np.array(data)
+# print([x for x in fts2[0]])
 
 # word_embedding = np.load('D:\\Data\\Text-to-Clip\\SCDM\\grounding\\Charades-STA\\words\\word_glove_fts_init.npy',encoding='latin1',allow_pickle=True)
 # print(word_embedding[105])

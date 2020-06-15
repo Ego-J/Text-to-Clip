@@ -2,7 +2,7 @@ import numpy as np
 import os, json, h5py, math, pdb, glob
 from PIL import Image
 import unicodedata
-import cPickle as pkl
+import pickle as pkl
 
 options = {}
 options['feature_map_len']=[256,128,64,32,16,8,4]
@@ -21,15 +21,22 @@ BATCH_SIZE = 16
 
 
 
-output_path = '../../../data/ActivityNet/h5py/'
+output_path = 'D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\h5py\\'
 
-splitdataset_path = '../../../data/ActivityNet/data_info/ActivityNet_dataset_split_full.npz'
-train_captions_path = '../../../data/ActivityNet/data_info/train.json'
-val_captions_path = '../../../data/ActivityNet/data_info/val_merge.json'
-video_info_path = '../../../data/ActivityNet/data_info/video_info.pkl'
+splitdataset_path = 'D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\data_info\\ActivityNet_dataset_split_full.npz'
+train_captions_path = 'D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\data_info\\train.json'
+val_captions_path = 'D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\data_info\\val_merge.json'
+video_info_path = 'D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\data_info\\video_info.pkl'
 
+class StrToBytes:  
+    def __init__(self, fileobj):  
+        self.fileobj = fileobj  
+    def read(self, size):  
+        return self.fileobj.read(size).encode()  
+    def readline(self, size=-1):  
+        return self.fileobj.readline(size).encode()
 
-video_info = pkl.load(open(video_info_path))
+video_info = pkl.load(StrToBytes(open(video_info_path)))
 train_j = json.load(open(train_captions_path))
 val_j = json.load(open(val_captions_path))
 
@@ -130,9 +137,12 @@ def driver(dataset, output_path):
     cnt = 0
     batch_id = 1
     List = np.load(splitdataset_path)[dataset] 
+    v_fts = h5py.File('D:\\Data\\Text-to-Clip\\SCDM\\data\\ActivityNet\\activitynet_train_c3d.hdf5','r')
     for iii in range(len(List)):
         video_fps, video_frames_num = get_video_info(List[iii])
         if video_fps == -1 or video_frames_num == -1:
+            continue
+        if List[iii] not in v_fts.keys():
             continue
         for capidx, caption in enumerate(info[List[iii]]['sentences']):
             if len(caption.split(' ')) < 35:
@@ -143,7 +153,7 @@ def driver(dataset, output_path):
 
                 anchor_input = generate_anchor_params(all_anchor_list,[g_left,g_right])
 
-                video_names_list.append(str(List[iii]))
+                video_names_list.append(str(List[iii]).encode('ascii','ignore'))
                 video_duration_list.append(info[List[iii]]['duration'])
                 video_actual_frames_num_list.append(video_frames_num)
                 sentence_list.append(unicodedata.normalize('NFKD', caption).encode('ascii','ignore'))
@@ -152,6 +162,7 @@ def driver(dataset, output_path):
                 cnt+=1
 
             if cnt == BATCH_SIZE:
+                print(output_path+'/'+dataset+'/'+dataset+'_'+str(batch_id)+'.h5')
                 batch = h5py.File(output_path+'/'+dataset+'/'+dataset+'_'+str(batch_id)+'.h5','w')
                 batch['video_name'] = np.array(video_names_list) # batch_size
                 batch['video_duration'] = np.array(video_duration_list) # batch_size

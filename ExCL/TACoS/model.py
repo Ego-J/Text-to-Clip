@@ -57,13 +57,13 @@ class ExCL(nn.Module):
         # 起点预测
         S_start = self.start_predictor(x) # S_start(b*vlen,1)
         S_start = S_start.view(-1,v_len) # S_start(b,vlen)
-        P_start = nn.functional.log_softmax(S_start,dim=1) # P_start(b,vlen)
+
         # 终点预测
         S_end = self.end_predictor(x)
         S_end = S_end.view(-1,v_len) 
         P_end = nn.functional.log_softmax(S_end,dim=1) # 同上
 
-        return P_start,P_end
+        return S_start,S_end
 
 if __name__ == "__main__":
     '''
